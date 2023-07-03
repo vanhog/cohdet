@@ -32,6 +32,46 @@ def write_environment(in_envd):
             file.write("%s=%s\n" % (k, in_envd[k]))
     os.chdir(base_dir)
 
+def get_unpreprocessed_scenes():
+    """
+    
+    Returns  
+    -------
+    unpreprocessed_scenes : list of strings
+
+    """
+    
+    import os
+    
+    unpreprocessed_scenes = []
+    
+    base_dir = os.getcwd()
+    
+    os.chdir('data')
+    local_repo = []
+    for i in os.listdir():
+        if os.path.isfile(i):
+            if i[-3:]=="zip":
+                local_repo.append(i)
+    
+    os.chdir(base_dir)
+    os.chdir('preprocessed')
+    
+    prepro_repo = []
+    for i in os.listdir():
+        if os.path.isfile(i):
+            if i[-3:]=='dim':
+                prepro_scene = i[0:8]
+                prepro_repo.append(prepro_scene)
+    
+    os.chdir(base_dir)
+    
+    for i in local_repo:
+        if not i[17:25] in prepro_repo:
+            unpreprocessed_scenes.append(i)
+    
+    return unpreprocessed_scenes
+            
 
 def preprocess_scene(scene_name, footprint, band_name):
     """
@@ -65,32 +105,45 @@ def preprocess_scene(scene_name, footprint, band_name):
         format: beam-dim
 
     """
+    import os
+    import sys
     import snappy
     from snappy import ProductIO, GPF, WKTReader
     SAR_image = ProductIO.readProduct(scene_name)
     
-    ## Apply orbit file
-    print('Apply orbit file')
-    orbit_HashMap = snappy.jpy.get_type('java.util.HashMap')
-    parameters = orbit_HashMap()
-    parameters.put('Apply-Orbit-File', True)
-    parameters.put('orbitType', 'Sentinel Precise (Auto Download)')
-    parameters.put('polyDegree', '3')
-    parameters.put('continueOnFail', 'false')
-    SAR_image_orb = GPF.createProduct('Apply-Orbit-File', parameters, SAR_image)
-    print('Done orbit file')
+    base_dir =os.getcwd()
+    try:
+        os.chdir('data')
+        ## Apply orbit file
+        print('Apply orbit file')
+        orbit_HashMap = snappy.jpy.get_type('java.util.HashMap')
+        parameters = orbit_HashMap()
+        parameters.put('Apply-Orbit-File', True)
+        parameters.put('orbitType', 'Sentinel Precise (Auto Download)')
+        parameters.put('polyDegree', '3')
+        parameters.put('continueOnFail', 'false')
+        SAR_image_orb = GPF.createProduct('Apply-Orbit-File', parameters, SAR_image)
+        print('Done orbit file')
+        
+        print('Subsetting')
+        geom = WKTReader().read(footprint)
+        HashMap = snappy.jpy.get_type('java.util.HashMap')
+        #GPF.getDefaultInstance().getOperatorSpiRegistry().loadOperatorSpis()
+        parameters = HashMap()
+        parameters.put('copyMetadata', True)
+        parameters.put('geoRegion', geom)
+        #parameters.put('bandNames', band_name)
+        SAR_image_subset = GPF.createProduct('Subset', parameters, SAR_image_orb)
+        os.chdir(base_dir)
+        os.chdir('preprocessed')
+        ProductIO.writeProduct(SAR_image_subset, scene_name[17:25]+'_subset', 'BEAM-DIMAP')
+        print('Done subsetting')
+        os.chdir(base_dir)
+    except Exception as e:
+        sys.exit(e)
+    finally:
+        os.chdir(base_dir)
     
-    print('Subsetting')
-    geom = WKTReader().read(footprint)
-    HashMap = snappy.jpy.get_type('java.util.HashMap')
-    #GPF.getDefaultInstance().getOperatorSpiRegistry().loadOperatorSpis()
-    parameters = HashMap()
-    parameters.put('copyMetadata', True)
-    parameters.put('geoRegion', geom)
-    #parameters.put('bandNames', band_name)
-    SAR_image_subset = GPF.createProduct('Subset', parameters, SAR_image_orb)
-    ProductIO.writeProduct(SAR_image_subset, scene_name[17:25]+'_subset', 'BEAM-DIMAP')
-    print('Done subsetting')
     return -1
 
 
@@ -142,22 +195,35 @@ def update_repo():
     scenes_df.sort_values(by=['beginposition'])
     scenes_df =scenes_df.reset_index(drop=True)
    
-    
-    if read_environment()['latest'] in scenes_df.iloc[0]['title']:
+    # Check for new data
+    lstd = read_environment()['latest']+":23:59"
+    dt_latest = datetime.strptime(lstd, "%Y%m%d:%H:%M")
+    scenes_df_new = scenes_df[(scenes_df['beginposition'])>dt_latest]
+
+
+    if len(scenes_df_new)==0:
         print('No new data')
     else:
         # for a better error handling see
         # https://stackoverflow.com/questions/44893461/problems-exiting-from-python-using-ipython-spyder
         # and
         # https://sentinelsat.readthedocs.io/en/stable/api_reference.html#module-sentinelsat.exceptions
-        print('Would like to download ', scenes_df.iloc[0]['title'])
-        os.chdir('data')
+        if len(scenes_df_new)>1:
+            print('There are  - ' + str(len(scenes_df_new)) + ' -  scenes to download')
+        #print('Would like to download ', scenes_df_new.iloc[-1]['title'])
         
-        try:
-            api.download(scenes_df.iloc[0]['uuid'])
-        except Exception as e:
-            sys.exit(e)
-       
-        os.chdir(base_dir)
-        envd['latest'] = scenes_df.iloc[0]['title'][17:25]
-        write_environment(envd)
+        for _,scn in scenes_df_new[::-1].iterrows():
+            os.chdir('data')
+        
+            try:
+                api.download(scn['uuid'])
+                envd['latest'] = scn['title'][17:25]
+                os.chdir(base_dir)
+                write_environment(envd)
+            except Exception as e:
+                sys.exit(e)
+            finally:
+                os.chdir(base_dir)
+        
+                
+            

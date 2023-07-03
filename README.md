@@ -1,0 +1,1 @@
+![Le Piton de la Fournaise](./images/la_reunion_overview.png)
