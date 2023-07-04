@@ -34,6 +34,8 @@ def write_environment(in_envd):
 
 def get_unpreprocessed_scenes():
     """
+    function that checks local repos content for being corrected
+    with an orbit file and for being subsetted
     
     Returns  
     -------
@@ -53,6 +55,7 @@ def get_unpreprocessed_scenes():
         if os.path.isfile(i):
             if i[-3:]=="zip":
                 local_repo.append(i)
+                print(i)
     
     os.chdir(base_dir)
     os.chdir('preprocessed')
@@ -71,7 +74,125 @@ def get_unpreprocessed_scenes():
             unpreprocessed_scenes.append(i)
     
     return unpreprocessed_scenes
-            
+ 
+
+    
+def do_interferogram(prime_scene, secon_scene):
+    import os
+    import sys
+    import snappy
+    from snappy import ProductIO, GPF
+    
+    base_dir = read_environment()['base_dir']
+    prepro_dir = read_environment()['preprocessed']
+    suffix = '.dim'
+    prime_scene_file = (os.path.join(base_dir, prepro_dir, prime_scene+suffix)).strip()
+    secon_scene_file = (os.path.join(base_dir, prepro_dir, secon_scene+suffix)).strip()
+    
+    print(prime_scene_file)
+    print(secon_scene_file)
+    
+    SAR_image_prime = ProductIO.readProduct(prime_scene_file)
+    SAR_image_secon = ProductIO.readProduct(secon_scene_file)
+    
+    # Stack creation
+    HashMap = snappy.jpy.get_type('java.util.HashMap')
+    parameters = HashMap()
+    parameters.put('extent','Master')
+   
+    scenes_to_stack = [SAR_image_prime, SAR_image_secon]
+    print('Creating stack ')
+    stack = GPF.createProduct("CreateStack",parameters,scenes_to_stack)
+    out_scene_file_name = prime_scene[0:8]+'_'+secon_scene[0:8]+'_stack'
+    coreg_dir = read_environment()['coregistered']
+    out_scene_file = os.path.join(base_dir,coreg_dir, out_scene_file_name)
+    print(out_scene_file)
+    ProductIO.writeProduct(stack, out_scene_file, 'BEAM-DIMAP')
+    
+    parameters = HashMap()
+    parameters.put('numGCPtoGenerate','5000')
+    parameters.put('coarseRegistrationWindowWidth','128')
+    parameters.put('coarseRegistrationWindowHeight','128')
+    parameters.put('rowInterpFactor','4')
+    parameters.put('columnInterpFactor','4')
+    parameters.put('maxIteration','10')
+    parameters.put('gcpTolerance','0.25')
+    parameters.put('applyFineRegistration',True)
+    SAR_image_corr = GPF.createProduct("Cross-Correlation",parameters, stack)
+    
+    Float = snappy.jpy.get_type('java.lang.Float')
+    parameters = HashMap()
+    parameters.put('rmsThreshold',Float(0.05))
+    parameters.put('warpPolynomialOrder',1)
+    parameters.put('interpolationMethod','Cubic convolution (6 points)')
+    SAR_image_coreg = GPF.createProduct("Warp",parameters,SAR_image_corr)
+   
+       
+    out_scene_file_name = prime_scene[0:8]+'_'+secon_scene[0:8]+'_coreg'
+    coreg_dir = read_environment()['coregistered']
+    out_scene_file = os.path.join(base_dir,coreg_dir, out_scene_file_name)
+    print(out_scene_file)
+    ProductIO.writeProduct(SAR_image_coreg, out_scene_file, 'BEAM-DIMAP')
+    
+    
+    parameters = HashMap()
+    parameters.put("Subtract flat-earth phase", True)
+    parameters.put("Degree of \"Flat Earth\" polynomial", 5)
+    parameters.put("Number of \"Flat Earth\" estimation points", 501)
+    parameters.put("Orbit interpolation degree", 3)
+    parameters.put("Include coherence estimation", True)
+    parameters.put("Square Pixel", True)
+    parameters.put("Independent Window Sizes", False)
+    parameters.put("Coherence Azimuth Window Size", 10)
+    parameters.put("Coherence Range Window Size", 11)
+    SAR_interferogram = GPF.createProduct("Interferogram", parameters, SAR_image_coreg)
+    
+    out_scene_file_name = prime_scene[0:8]+'_'+secon_scene[0:8]+'_interferogram'
+    coreg_dir = read_environment()['interferograms']
+    out_scene_file = os.path.join(base_dir,coreg_dir, out_scene_file_name)
+    print(out_scene_file)
+    ProductIO.writeProduct(SAR_interferogram, out_scene_file, 'BEAM-DIMAP')
+    print('Interferogram: done!')
+           
+def do_collocation(prime_scene, secon_scene):
+    import os
+    import sys
+    import snappy
+    from snappy import ProductIO, GPF
+    
+    HashMap = snappy.jpy.get_type('java.util.HashMap')
+    
+    base_dir = read_environment()['base_dir']
+    ifg_dir = read_environment()['interferograms']
+    suffix = '.dim'
+    prime_scene_file = (os.path.join(base_dir, ifg_dir, prime_scene+suffix)).strip()
+    secon_scene_file = (os.path.join(base_dir, ifg_dir, secon_scene+suffix)).strip()
+    
+    
+    SAR_image_prime = ProductIO.readProduct(prime_scene_file)
+    SAR_image_secon = ProductIO.readProduct(secon_scene_file)
+    
+    
+    sources = HashMap()
+    sources.put("master", SAR_image_prime)
+    sources.put("slave", SAR_image_secon)
+    
+    parameters = HashMap()
+    parameters.put("targetProductName", 'collocated')
+    parameters.put("targetProductType", 'COLLOCATED')
+    parameters.put('renameMasterComponents', True)
+    parameters.put('renameSlaveComponents', True)
+    parameters.put('masterComponentPattern', '${ORIGINAL_NAME}_M')
+    parameters.put('slaveComponentPattern', '${ORIGINAL_NAME}_S')
+    parameters.put('resamplingType', 'NEAREST_NEIGHBOUR')
+    cohdet_collocation = GPF.createProduct("Collocate", parameters, sources)
+    out_scene_file_name = prime_scene[0:8]+'_'+secon_scene[0:8]+'_collocate'
+    coreg_dir = read_environment()['collocated']
+    out_scene_file = os.path.join(base_dir,coreg_dir, out_scene_file_name)
+    print(out_scene_file)
+    ProductIO.writeProduct(cohdet_collocation, out_scene_file, 'BEAM-DIMAP')
+    print('Collocation: done!')
+    
 
 def preprocess_scene(scene_name, footprint, band_name):
     """
@@ -109,11 +230,14 @@ def preprocess_scene(scene_name, footprint, band_name):
     import sys
     import snappy
     from snappy import ProductIO, GPF, WKTReader
-    SAR_image = ProductIO.readProduct(scene_name)
+  
     
     base_dir =os.getcwd()
     try:
         os.chdir('data')
+        scene_file = os.path.join(base_dir,'data',scene_name)
+        print(scene_file)
+        SAR_image = ProductIO.readProduct(scene_file)
         ## Apply orbit file
         print('Apply orbit file')
         orbit_HashMap = snappy.jpy.get_type('java.util.HashMap')
@@ -134,9 +258,9 @@ def preprocess_scene(scene_name, footprint, band_name):
         parameters.put('geoRegion', geom)
         #parameters.put('bandNames', band_name)
         SAR_image_subset = GPF.createProduct('Subset', parameters, SAR_image_orb)
-        os.chdir(base_dir)
-        os.chdir('preprocessed')
-        ProductIO.writeProduct(SAR_image_subset, scene_name[17:25]+'_subset', 'BEAM-DIMAP')
+        out_scene_file = os.path.join(base_dir,'preprocessed', scene_name[17:25]+'_subset')
+        print(out_scene_file)
+        ProductIO.writeProduct(SAR_image_subset, out_scene_file, 'BEAM-DIMAP')
         print('Done subsetting')
         os.chdir(base_dir)
     except Exception as e:

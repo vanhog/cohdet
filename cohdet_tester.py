@@ -7,4 +7,6 @@ Created on Wed Jun 21 16:06:02 2023
 
 import cohdet as ch
 
-ch.update_repo()
+#ch.update_repo()
+
+ch.do_collocation('20230501_20230513_interferogram','20230513_20230525_interferogram')
