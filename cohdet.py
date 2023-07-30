@@ -55,7 +55,6 @@ def get_unpreprocessed_scenes():
         if os.path.isfile(i):
             if i[-3:]=="zip":
                 local_repo.append(i)
-                print(i)
     
     os.chdir(base_dir)
     os.chdir('preprocessed')
@@ -192,6 +191,51 @@ def do_collocation(prime_scene, secon_scene):
     print(out_scene_file)
     ProductIO.writeProduct(cohdet_collocation, out_scene_file, 'BEAM-DIMAP')
     print('Collocation: done!')
+    
+    
+def mask_coh_diff(collocated_scene):
+    import os
+    import sys
+    import snappy
+    from snappy import ProductIO, GPF
+    
+    HashMap = snappy.jpy.get_type('java.util.HashMap')
+    
+    base_dir = read_environment()['base_dir']
+    col_dir = read_environment()['collocated']
+    results_dir = read_environment()['results']
+    suffix = '.dim'
+    col_scene_file = (os.path.join(base_dir, col_dir, collocated_scene+suffix)).strip()
+    
+    col_scene = ProductIO.readProduct(col_scene_file)
+    col_bands = col_scene.getBandNames()
+    
+    coh_bands = []
+    for i in col_bands:
+        if 'coh_' in i:
+            coh_bands.append(i)
+            
+            
+    
+    parameters = HashMap()
+    BandDescriptor = snappy.jpy.get_type('org.esa.snap.core.gpf.common.BandMathsOp$BandDescriptor')
+    targetBand = BandDescriptor()
+    targetBand.name = 'coh_diff_mask'
+    targetBand.type = 'float32'
+    targetBand.expression = ('if (('+coh_bands[0]+'> 0.6) and ('+coh_bands[1]+'<='+coh_bands[0]+'*0.4)) then 1 else 0')
+    targetBands = snappy.jpy.array('org.esa.snap.core.gpf.common.BandMathsOp$BandDescriptor', 1)
+    targetBands[0] = targetBand
+    parameters.put('targetBands', targetBands)
+    product = GPF.createProduct('BandMaths',parameters,col_scene)
+    
+    out_scene_file_name = col_bands[1]+'_'+col_bands[0]
+    out_scene_file = os.path.join(base_dir,results_dir, out_scene_file_name)
+    print(out_scene_file)
+    ProductIO.writeProduct(product, out_scene_file, 'BEAM-DIMAP')
+    print('Mask: done!')
+    return coh_bands
+    
+    
     
 
 def preprocess_scene(scene_name, footprint, band_name):

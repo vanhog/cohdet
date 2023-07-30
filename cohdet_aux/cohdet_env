@@ -4,6 +4,7 @@ preprocessed=preprocessed
 coregistered=coregistered
 interferograms=interferograms
 collocated=collocated
+results=cohmasks
 start=20230101
 latest=20230618
 this_user=Zefram
