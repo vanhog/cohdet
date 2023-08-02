@@ -11,6 +11,30 @@ This module depends on: sentinelsat and snappy
 
 
 def read_environment():
+    """
+    Reads a textfile "cohdet_env" expected to be in the directory
+    "cohdet_aux"
+
+    Returns
+    -------
+    cohdet_env: dictionary containing key-value-pairs discribing 
+    the cohdet environment:
+        
+        base_dir: main working directory containing cohdet.py
+        data: data directory
+        preprocessed: directory for preprocessed data
+        coregistered: directory for coregistered data
+        interferograms: directory for interferograms
+        collocated: directory for collocated interferograms
+        results: directory for final results 
+        start: start of observation period (first SLC)
+        latest: currently latest SCL (cohdet_aux NEED to be WRITABLE)
+        this_user: user's name at ESA's science hub
+        this_pw: user's password at ESA's science hub
+        footprint: footprint polygon of area of interest as wkt
+        sensor_mode: sensor mode 
+        api_url: Url of ESA's science hub
+    """
     
     import os
     base_dir = os.getcwd()
@@ -34,8 +58,11 @@ def write_environment(in_envd):
 
 def get_unpreprocessed_scenes():
     """
-    function that checks local repos content for being corrected
-    with an orbit file and for being subsetted
+    function that checks local repos content for being preprocessed, i.e.
+    it checks weather there exists a preprocessed file in the directory
+    given in cohdet_env under "preprocessed" for every file in 
+    cohdet_env directory "data"
+    
     
     Returns  
     -------
@@ -77,6 +104,30 @@ def get_unpreprocessed_scenes():
 
     
 def do_interferogram(prime_scene, secon_scene):
+    """
+    do_intergerogram calculates a full interferogram between the 
+    two files prime_scene and secon_scene. The parameters used are
+    hard coded as can be seen below. It may be a good idea to change
+    to a sofcoded version with parametersettings read from cohdet_aux.
+    
+    do_interferogram calculates the interferogram in a four step procedure:
+        1. stack scenes
+        2. do cross correlation
+        3. warp it!
+        4. calculate interferogram
+
+    Parameters
+    ----------
+    prime_scene : TYPE
+        scene used as primary scene
+    secon_scene : TYPE
+        scene used as scondary scene
+
+    Returns
+    -------
+    None. (but saves an interferogram to cohdet_env: interferograms)
+
+    """
     import os
     import sys
     import snappy
@@ -154,6 +205,23 @@ def do_interferogram(prime_scene, secon_scene):
     print('Interferogram: done!')
            
 def do_collocation(prime_scene, secon_scene):
+    """
+    Interferograms have to be collocated ("coregistered") to be used
+    as terms in bandmath. This is, what do_collocation does for a named
+    pair of interferograms
+
+    Parameters
+    ----------
+    prime_scene : TYPE
+        The interferogram used as primary scene
+    secon_scene : TYPE
+        The interferogram used as scondary scene
+
+    Returns
+    -------
+    None. (but saves the collocated interferogramm under cohdet_env: collocated)
+
+    """
     import os
     import sys
     import snappy
