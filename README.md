@@ -1,6 +1,7 @@
 
 Disclaimer: This piece of software was written to be used with ESA's scihub data service. By end of October 2023, ESA dropped its scihub-service in favour of the Copernicus Data Space Ecosystem [CDSE](https://dataspace.copernicus.eu/). This code is maintained for historical reason until a version compatible with CDSE is available. 
 
+The software consists of a set of functions, used to stepwise process Sentinel-1 radar images from raw acquisitions to differential coherence maps. 
 ---
 
 ![Le Piton de la Fournaise](./images/la_reunion_overview.png)
